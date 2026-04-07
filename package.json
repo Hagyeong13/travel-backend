@@ -21,7 +21,9 @@
   "homepage": "https://github.com/Hagyeong13/travel-backend#readme",
   "dependencies": {
     "dotenv": "^17.4.0",
-    "express": "^5.2.1"
+    "express": "^5.2.1",
+    "swagger-jsdoc": "^6.2.8",
+    "swagger-ui-express": "^5.0.1"
   },
   "devDependencies": {
     "nodemon": "^3.1.14"
