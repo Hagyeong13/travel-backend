@@ -3,15 +3,12 @@ import { successResponse } from '../../../common/responses/response.js';
 
 export const createRoom = async (req, res, next) => {
   try {
-    const { name, startDate, endDate, totalBudget, hostName, hostPassword } = req.body;
+    const { name, startDate, endDate } = req.body;
 
     const result = await roomService.createRoom({
       name,
       startDate,
-      endDate,
-      totalBudget,
-      hostName,
-      hostPassword
+      endDate
     });
 
     return res.json(successResponse(result, '방 생성이 완료되었습니다.'));

@@ -1,19 +1,13 @@
 export const createRoom = async ({
   name,
   startDate,
-  endDate,
-  totalBudget,
-  hostName,
-  hostPassword
+  endDate
 }) => {
   return {
     roomId: 'room-uuid',
-    memberId: 'member-uuid',
     name,
     startDate,
     endDate,
-    totalBudget: totalBudget ?? null,
-    hostName,
     inviteToken: 'abc123xyz'
   };
 };

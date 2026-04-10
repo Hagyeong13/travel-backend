@@ -26,7 +26,7 @@ const router = express.Router();
  *         application/json:
  *           schema:
  *             type: object
- *             required: [name, startDate, endDate, hostName, hostPassword]
+ *             required: [name, startDate, endDate]
  *             properties:
  *               name:
  *                 type: string
@@ -39,15 +39,6 @@ const router = express.Router();
  *                 type: string
  *                 format: date
  *                 example: 2026-04-08
- *               totalBudget:
- *                 type: number
- *                 example: 300000
- *               hostName:
- *                 type: string
- *                 example: 하경
- *               hostPassword:
- *                 type: string
- *                 example: 1234
  *     responses:
  *       200:
  *         description: 방 생성 성공
