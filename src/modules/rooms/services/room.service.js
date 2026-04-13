@@ -1,11 +1,12 @@
 import { AppError } from '../../../common/errors/AppError.js';
 import { ERROR_CODES } from '../../../common/constants/errorCodes.js';
 import { randomUUID } from 'crypto';
-
-// In-memory stores (D파트에서 DB로 교체 예정)
-export const rooms = new Map();       // roomId -> room
-export const members = new Map();     // memberId -> member
-export const inviteTokens = new Map(); // token -> roomId
+import { field, toDateString } from '../../../common/utils/dto.js';
+import {
+  roomRepository,
+  memberRepository,
+  inviteLinkRepository
+} from '../repositories/index.js';
 
 export const createRoom = async ({ name, startDate, endDate }) => {
   if (!name) throw new AppError(ERROR_CODES.ROOM_40001);
@@ -16,74 +17,79 @@ export const createRoom = async ({ name, startDate, endDate }) => {
   const roomId = randomUUID();
   const inviteToken = randomUUID().replace(/-/g, '').substring(0, 12);
 
-  const room = {
-    roomId,
+  await roomRepository.createRoom({
+    id: roomId,
     name,
     startDate,
     endDate,
-    inviteToken,
-    createdAt: new Date().toISOString()
+    totalBudget: null
+  });
+  await inviteLinkRepository.createInviteLink({
+    id: randomUUID(),
+    roomId,
+    token: inviteToken
+  });
+
+  return {
+    roomId,
+    name,
+    startDate: toDateString(startDate),
+    endDate: toDateString(endDate),
+    inviteToken
   };
-
-  rooms.set(roomId, room);
-  inviteTokens.set(inviteToken, roomId);
-
-  return { roomId, name, startDate, endDate, inviteToken };
 };
 
 export const enterRoom = async ({ token, name, password }) => {
-  // 초대 토큰 검증
-  const roomId = inviteTokens.get(token);
+  const inviteLink = await inviteLinkRepository.findInviteLinkByToken(token);
+  const roomId = field(inviteLink, 'room_id');
   if (!roomId) throw new AppError(ERROR_CODES.INVITE_40401);
 
-  const room = rooms.get(roomId);
+  const room = await roomRepository.findRoomById(roomId);
   if (!room) throw new AppError(ERROR_CODES.ROOM_40401);
 
-  // 동일 이름 멤버 존재 여부 확인
-  const existingMember = [...members.values()].find(
-    m => m.roomId === roomId && m.name === name
+  const roomMembers = await memberRepository.findMembersByRoomId(roomId);
+  const existingMember = roomMembers.find(
+    m => field(m, 'name') === name
   );
 
   if (existingMember) {
-    // 재입장: 비밀번호 검증
-    if (existingMember.password !== password) {
+    if (field(existingMember, 'password_hash') !== password) {
       throw new AppError(ERROR_CODES.MEMBER_40101);
     }
+
+    const memberId = field(existingMember, 'id');
+    const role = field(existingMember, 'role');
     return {
       roomId,
-      memberId: existingMember.memberId,
-      name: existingMember.name,
-      role: existingMember.role,
+      memberId,
+      name: field(existingMember, 'name'),
+      role,
       token
     };
   }
 
-  // 신규 멤버: 방에서 첫 번째 입장자 → HOST
-  const roomMembers = [...members.values()].filter(m => m.roomId === roomId);
   const role = roomMembers.length === 0 ? 'HOST' : 'MEMBER';
-
   const memberId = randomUUID();
-  const member = {
-    memberId,
+
+  await memberRepository.createMember({
+    id: memberId,
     roomId,
     name,
-    password,
-    role,
-    createdAt: new Date().toISOString()
-  };
-  members.set(memberId, member);
+    passwordHash: password,
+    role
+  });
 
   return { roomId, memberId, name, role, token };
 };
 
 export const getRoomSummary = async ({ roomId }) => {
-  const room = rooms.get(roomId);
+  const room = await roomRepository.findRoomById(roomId);
   if (!room) throw new AppError(ERROR_CODES.ROOM_40401);
 
   return {
-    roomId: room.roomId,
-    name: room.name,
-    startDate: room.startDate,
-    endDate: room.endDate
+    roomId: field(room, 'id'),
+    name: field(room, 'name'),
+    startDate: toDateString(field(room, 'start_date')),
+    endDate: toDateString(field(room, 'end_date'))
   };
 };

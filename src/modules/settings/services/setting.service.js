@@ -1,30 +1,36 @@
 import { AppError } from '../../../common/errors/AppError.js';
 import { ERROR_CODES } from '../../../common/constants/errorCodes.js';
-import { rooms, members } from '../../rooms/services/room.service.js';
+import { settingRepository } from '../repositories/index.js';
+import { field, toDateString, toDateTimeString } from '../../../common/utils/dto.js';
 
 export const getSettings = async ({ roomId, memberId }) => {
-  const room = rooms.get(roomId);
+  const { room, members, inviteLinks } = await settingRepository.findRoomSettingsByRoomId(roomId);
   if (!room) throw new AppError(ERROR_CODES.ROOM_40401);
 
-  const member = members.get(memberId);
-  if (!member || member.roomId !== roomId) throw new AppError(ERROR_CODES.MEMBER_40301);
+  const member = members.find((m) => field(m, 'id') === memberId);
+  if (!member || field(member, 'room_id') !== roomId) throw new AppError(ERROR_CODES.MEMBER_40301);
 
-  const roomMembers = [...members.values()]
-    .filter(m => m.roomId === roomId)
-    .map(m => ({ memberId: m.memberId, name: m.name, role: m.role }));
+  const latestInviteLink = inviteLinks[0] ?? null;
+  const inviteToken = latestInviteLink ? field(latestInviteLink, 'token') : null;
 
   return {
-    members: roomMembers,
+    members: members.map(m => ({
+      memberId: field(m, 'id'),
+      name: field(m, 'name'),
+      role: field(m, 'role')
+    })),
     invite: {
-      token: room.inviteToken,
-      inviteUrl: `http://localhost:${process.env.PORT ?? 3000}/invite/${room.inviteToken}`
+      token: inviteToken,
+      inviteUrl: inviteToken
+        ? `http://localhost:${process.env.PORT ?? 3000}/invite/${inviteToken}`
+        : null
     },
     room: {
-      roomId: room.roomId,
-      name: room.name,
-      startDate: room.startDate,
-      endDate: room.endDate,
-      createdAt: room.createdAt
+      roomId: field(room, 'id'),
+      name: field(room, 'name'),
+      startDate: toDateString(field(room, 'start_date')),
+      endDate: toDateString(field(room, 'end_date')),
+      createdAt: toDateTimeString(field(room, 'created_at'))
     }
   };
 };
