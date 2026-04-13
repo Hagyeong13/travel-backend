@@ -49,6 +49,7 @@ export const createVote = async ({ roomId, memberId, title, deadline, options })
       voteOptionId: randomUUID(),
       placeId,
       label: place.title,
+      linkUrl: place.sourceUrl ?? null,
       voteCount: 0
     };
   });
