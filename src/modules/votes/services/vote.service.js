@@ -2,6 +2,7 @@ import { AppError } from '../../../common/errors/AppError.js';
 import { ERROR_CODES } from '../../../common/constants/errorCodes.js';
 import { randomUUID } from 'crypto';
 import { rooms, members } from '../../rooms/services/room.service.js';
+import { places } from '../../places/services/place.service.js';
 
 // In-memory stores (D파트에서 DB로 교체 예정)
 const votes = new Map();         // voteId -> vote
@@ -40,11 +41,17 @@ export const createVote = async ({ roomId, memberId, title, deadline, options })
   if (deadline && new Date(deadline) <= new Date()) throw new AppError(ERROR_CODES.VOTE_40004);
 
   const voteId = randomUUID();
-  const voteOptions = options.map(label => ({
-    voteOptionId: randomUUID(),
-    label,
-    voteCount: 0
-  }));
+  const voteOptions = options.map(({ placeId }) => {
+    const place = places.get(placeId);
+    if (!place) throw new AppError(ERROR_CODES.PLACE_40401);
+    if (place.roomId !== roomId) throw new AppError(ERROR_CODES.VOTE_40902);
+    return {
+      voteOptionId: randomUUID(),
+      placeId,
+      label: place.title,
+      voteCount: 0
+    };
+  });
 
   const vote = {
     voteId,

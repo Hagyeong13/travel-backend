@@ -4,7 +4,7 @@ import { randomUUID } from 'crypto';
 import { rooms, members } from '../../rooms/services/room.service.js';
 
 // In-memory stores (D파트에서 DB로 교체 예정)
-const places = new Map();        // placeId -> place
+export const places = new Map(); // placeId -> place
 const reactions = new Map();     // `${placeId}:${memberId}` -> 'LIKE' | 'DISLIKE'
 const comments = new Map();      // commentId -> comment
 const scheduleItems = new Map(); // scheduleItemId -> scheduleItem
@@ -195,6 +195,7 @@ export const updatePlaceReaction = async ({ placeId, memberId, reactionType }) =
 export const updatePlaceRequired = async ({ placeId, memberId, isRequired }) => {
   const place = places.get(placeId);
   if (!place) throw new AppError(ERROR_CODES.PLACE_40401);
+  if (place.isScheduled) throw new AppError(ERROR_CODES.PLACE_40901);
 
   place.isRequired = isRequired;
 
@@ -215,6 +216,7 @@ export const getPlaceComments = async ({ placeId, memberId }) => {
 export const createPlaceComment = async ({ placeId, memberId, content }) => {
   const place = places.get(placeId);
   if (!place) throw new AppError(ERROR_CODES.PLACE_40401);
+  if (place.isScheduled) throw new AppError(ERROR_CODES.PLACE_40901);
   if (!content || content.trim() === '') throw new AppError(ERROR_CODES.COMMENT_40001);
 
   const commentId = randomUUID();
@@ -276,10 +278,15 @@ export const deleteScheduleItem = async ({ scheduleItemId, memberId }) => {
   const item = scheduleItems.get(scheduleItemId);
   if (!item) throw new AppError(ERROR_CODES.ITINERARY_40402);
 
-  // 연결된 장소의 isScheduled 복원
+  // 연결된 장소의 isScheduled 복원 (같은 placeId를 참조하는 다른 일정이 없을 때만)
   if (item.placeId) {
     const place = places.get(item.placeId);
-    if (place) place.isScheduled = false;
+    if (place) {
+      const stillReferenced = [...scheduleItems.values()].some(
+        s => s.placeId === item.placeId && s.scheduleItemId !== scheduleItemId
+      );
+      if (!stillReferenced) place.isScheduled = false;
+    }
   }
 
   scheduleItems.delete(scheduleItemId);
