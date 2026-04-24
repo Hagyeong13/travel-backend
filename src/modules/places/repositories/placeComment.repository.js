@@ -12,15 +12,17 @@ export async function createPlaceComment({ id, placeId, memberId, content }) {
 export async function findCommentsByPlaceId(placeId) {
   const sql = `
     SELECT
-      id,
-      place_id,
-      member_id,
-      DBMS_LOB.SUBSTR(content, 4000, 1) AS content,
-      created_at,
-      updated_at
-    FROM place_comments
-    WHERE place_id = :placeId
-    ORDER BY created_at ASC
+      pc.id,
+      pc.place_id,
+      pc.member_id,
+      m.name AS member_name,
+      DBMS_LOB.SUBSTR(pc.content, 4000, 1) AS content,
+      pc.created_at,
+      pc.updated_at
+    FROM place_comments pc
+    LEFT JOIN members m ON m.id = pc.member_id
+    WHERE pc.place_id = :placeId
+    ORDER BY pc.created_at ASC
   `;
   return fetchAll(sql, { placeId });
 }

@@ -250,6 +250,7 @@ export const getPlaceComments = async ({ placeId, memberId }) => {
       commentId: field(comment, 'id'),
       placeId: field(comment, 'place_id'),
       memberId: field(comment, 'member_id'),
+      memberName: field(comment, 'member_name'),
       content: field(comment, 'content'),
       createdAt: toDateTimeString(field(comment, 'created_at'))
     }))
