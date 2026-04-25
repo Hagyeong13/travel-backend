@@ -20,6 +20,7 @@
   },
   "homepage": "https://github.com/Hagyeong13/travel-backend#readme",
   "dependencies": {
+    "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "oracledb": "^6.10.0",

@@ -46,7 +46,6 @@ const hasTimeOverlap = async (itineraryDayId, startTime, endTime) => {
     const itemStartTime = field(item, 'start_time');
     const itemEndTime = field(item, 'end_time');
     if (!itemStartTime || !itemEndTime) continue;
-    // 겹침 조건: startTime1 < endTime2 AND startTime2 < endTime1
     if (startTime < itemEndTime && itemStartTime < endTime) return true;
   }
   return false;
@@ -63,6 +62,35 @@ const inferSourceType = (sourceUrl) => {
   }
 
   return 'ETC';
+};
+
+/* 날짜 문자열 안전 처리 함수 */
+const parseLocalDateString = (dateStr) => {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  return new Date(year, month - 1, day);
+};
+
+const formatLocalDate = (date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const addDaysToDateString = (dateStr, daysToAdd) => {
+  const date = parseLocalDateString(dateStr);
+  date.setDate(date.getDate() + daysToAdd);
+  return formatLocalDate(date);
+};
+
+const getDiffDays = (startDateStr, endDateStr) => {
+  const start = parseLocalDateString(startDateStr);
+  const end = parseLocalDateString(endDateStr);
+  return Math.floor((end - start) / (1000 * 60 * 60 * 24));
+};
+
+const getDayOrder = (startDateStr, targetDateStr) => {
+  return getDiffDays(startDateStr, targetDateStr) + 1;
 };
 
 // --- 서비스 함수 ---
@@ -102,15 +130,17 @@ export const getPlanner = async ({ roomId, memberId }) => {
     memo: field(item, 'memo')
   }));
 
-  // 날짜 범위로 days 배열 생성
+  const roomStartDate = toDateString(field(room, 'start_date'));
+  const roomEndDate = toDateString(field(room, 'end_date'));
+
   const days = [];
-  const start = new Date(field(room, 'start_date'));
-  const end = new Date(field(room, 'end_date'));
-  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-    const dateStr = d.toISOString().split('T')[0];
+  const diffDays = getDiffDays(roomStartDate, roomEndDate);
+
+  for (let i = 0; i <= diffDays; i += 1) {
+    const dateStr = addDaysToDateString(roomStartDate, i);
     days.push({
       date: dateStr,
-      scheduleItems: roomScheduleItems.filter(s => s.date === dateStr)
+      scheduleItems: roomScheduleItems.filter((s) => s.date === dateStr)
     });
   }
 
@@ -118,8 +148,8 @@ export const getPlanner = async ({ roomId, memberId }) => {
     room: {
       roomId: field(room, 'id'),
       name: field(room, 'name'),
-      startDate: toDateString(field(room, 'start_date')),
-      endDate: toDateString(field(room, 'end_date'))
+      startDate: roomStartDate,
+      endDate: roomEndDate
     },
     days,
     scheduleItems: roomScheduleItems,
@@ -163,7 +193,6 @@ export const updatePlace = async ({ placeId, memberId, title, sourceUrl, memo, e
   const place = await placeRepository.findPlaceById(placeId);
   if (!place) throw new AppError(ERROR_CODES.PLACE_40401);
 
-  // 일정에 반영된 장소는 수정 불가
   if (await isPlaceScheduled(placeId)) throw new AppError(ERROR_CODES.PLACE_40901);
 
   await placeRepository.updatePlaceById({
@@ -176,7 +205,6 @@ export const updatePlace = async ({ placeId, memberId, title, sourceUrl, memo, e
   });
 
   const updatedPlace = await placeRepository.findPlaceById(placeId);
-
   const updatedIsRequired = toBoolean(field(updatedPlace, 'is_required'));
 
   return {
@@ -194,7 +222,6 @@ export const deletePlace = async ({ placeId, memberId }) => {
   const place = await placeRepository.findPlaceById(placeId);
   if (!place) throw new AppError(ERROR_CODES.PLACE_40401);
 
-  // 일정에 반영된 장소는 삭제 불가
   if (await isPlaceScheduled(placeId)) throw new AppError(ERROR_CODES.PLACE_40901);
 
   await placeReactionRepository.deleteReactionsByPlaceId(placeId);
@@ -210,9 +237,9 @@ export const updatePlaceReaction = async ({ placeId, memberId, reactionType }) =
   if (await isPlaceScheduled(placeId)) throw new AppError(ERROR_CODES.PLACE_40901);
   if (!['LIKE', 'DISLIKE', 'NONE'].includes(reactionType)) throw new AppError(ERROR_CODES.REACTION_40001);
 
-  // NONE 요청일 때만 취소하고, LIKE/DISLIKE는 항상 해당 반응으로 고정
   const isClearRequest = reactionType === 'NONE';
   const newReaction = isClearRequest ? null : reactionType;
+
   await placeReactionRepository.upsertPlaceReaction({
     id: randomUUID(),
     placeId,
@@ -265,6 +292,7 @@ export const createPlaceComment = async ({ placeId, memberId, content }) => {
 
   const commentId = randomUUID();
   const createdAt = toDateTimeString(new Date());
+
   await placeCommentRepository.createPlaceComment({
     id: commentId,
     placeId,
@@ -279,9 +307,9 @@ export const createScheduleItem = async ({ roomId, memberId, placeId, title, dat
   const room = await assertRoomExists(roomId);
   await assertMemberInRoom(memberId, roomId);
 
-  // 날짜가 방 기간 내인지 검증
   const roomStartDate = toDateString(field(room, 'start_date'));
   const roomEndDate = toDateString(field(room, 'end_date'));
+
   if (date < roomStartDate || date > roomEndDate) {
     throw new AppError(ERROR_CODES.ITINERARY_40001);
   }
@@ -290,14 +318,17 @@ export const createScheduleItem = async ({ roomId, memberId, placeId, title, dat
     roomId,
     travelDate: date
   });
+
   if (!itineraryDay) {
-    const dayOrder = Math.floor((new Date(date) - new Date(roomStartDate)) / (1000 * 60 * 60 * 24)) + 1;
+    const dayOrder = getDayOrder(roomStartDate, date);
+
     await itineraryDayRepository.createItineraryDay({
       id: randomUUID(),
       roomId,
       travelDate: date,
       dayOrder
     });
+
     itineraryDay = await itineraryDayRepository.findItineraryDayByRoomAndDate({
       roomId,
       travelDate: date
@@ -306,7 +337,6 @@ export const createScheduleItem = async ({ roomId, memberId, placeId, title, dat
 
   const itineraryDayId = field(itineraryDay, 'id');
 
-  // 동일 시간대 일정 중복 체크
   if (await hasTimeOverlap(itineraryDayId, startTime, endTime)) {
     throw new AppError(ERROR_CODES.ITINERARY_40901);
   }
@@ -322,6 +352,7 @@ export const createScheduleItem = async ({ roomId, memberId, placeId, title, dat
   const dayItems = await itineraryItemRepository.findItineraryItemsByDayId(itineraryDayId);
   const sequenceNo = dayItems.length + 1;
   const scheduleItemId = randomUUID();
+
   await itineraryItemRepository.createItineraryItem({
     id: scheduleItemId,
     itineraryDayId,
